@@ -1,329 +1,206 @@
 # EGFR Virtual Screen
 
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/egfr-virtual-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/egfr-virtual-screen/actions/workflows/ci.yml)
+A reproducible ligand-based EGFR virtual-screening benchmark built with RDKit, scikit-learn, PyTorch, and ChEMBL 37.
 
 ## Reviewer snapshot
-- Target: human EGFR (CHEMBL203)
-- Task: ligand-based virtual screen from ChEMBL bioactivity
-- Stack: RDKit, scikit-learn, PyTorch
-- Result: ranked public library plus nearest-training-active similarity
-- Finding: TBD after scaffold-split evaluation and screening
-- Not claimed: a new EGFR drug
+
+- **Target:** human EGFR / ErbB1 (`CHEMBL203`)
+- **Benchmark:** 9,476 standardized labeled compounds from 20,595 ChEMBL activity rows
+- **Primary evaluation:** Bemis-Murcko scaffold split with zero scaffold overlap
+- **Selected model:** Random Forest, chosen by scaffold-validation AUPRC only
+- **Scaffold test:** AUROC **0.967**, AUPRC **0.993**
+- **External screen:** 29,845 non-overlapping standardized molecules scored from a deterministic 30,000-molecule ChEMBL 37 slice
+- **Central diagnostic:** 46/50 raw top scores were within Tanimoto >= 0.5 of a scaffold-training active; 15/50 were >= 0.7
+- **Novelty-aware shortlist:** 20 property-filtered hypotheses with nearest-training-active Tanimoto strictly < 0.5
+- **Not claimed:** experimental EGFR inhibition, a new drug, or prospective validation
 
 ## Scientific question
 
-**If I train an activity model on cleaned EGFR ChEMBL data, how many of the highest-scoring molecules from a held-out public library are novel chemotypes rather than near-neighbor lookalikes of known actives?**
+**If I train an activity model on cleaned EGFR ChEMBL data, how many of the highest-scoring molecules from an external public library are novel chemotypes rather than near-neighbor lookalikes of known actives?**
 
-This repository is intentionally narrow. It treats a virtual-screen score as a ranking signal, then asks whether the ranking is doing more than retrieving analogs of molecules already present in the training set.
+The screen is deliberately skeptical: model score and chemical novelty are reported separately. Exact standardized-SMILES overlap with the complete EGFR benchmark is removed before scoring, and novelty is measured only against actives in the scaffold-training partition.
 
-## Data source and activity cutoff
+## Data and labels
 
-### EGFR bioactivity data
+The EGFR snapshot was retrieved from ChEMBL 37 on **2026-09-27 UTC** (ChEMBL release date **2026-05-01**) for human `CHEMBL203`. It keeps `IC50`, `Ki`, and `Kd` measurements in nM. The frozen snapshot manifest records the query and SHA-256 checksum.
 
-- Target: human EGFR / ErbB1, ChEMBL target ID `CHEMBL203`.
-- ChEMBL release: expected `ChEMBL_37`; exact observed API release and release date are written to the snapshot manifest at download time.
-- Retrieval date: `TBD`.
-- Source: ChEMBL web services via `chembl_webresource_client`.
-- Assay organism: `Homo sapiens`.
-- Standard activity types kept: `IC50`, `Ki`, `Kd`.
-- Standard unit required: `nM`.
-- Snapshot files: `data/raw/egfr_chembl37_activities.tsv` and a sidecar JSON manifest containing the query settings, observed ChEMBL release, row count, and SHA-256 checksum.
-
-The API reflects the current ChEMBL release rather than arbitrary historical releases, so `src/chembl.py` checks the API status endpoint before retrieval. By default it refuses to download if the observed release does not match `configs/default.yaml`. This prevents a future rerun from silently replacing the benchmark with a different ChEMBL release. For a fully frozen benchmark, keep the emitted snapshot file and manifest used for the reported results.
-
-### Activity transformation and classification
-
-For a measurement reported in nM:
+For measurements in nM:
 
 ```text
 pActivity = 9 - log10(activity_nM)
 ```
 
-Classification thresholds:
+- active: `pActivity >= 6.0` (<= 1,000 nM)
+- inactive: `pActivity <= 5.0` (>= 10,000 nM)
+- gray zone: `5.0 < pActivity < 6.0`, excluded
 
-- active: `pActivity >= 6.0`, equivalent to `<= 1,000 nM`
-- inactive / decoy-like: `pActivity <= 5.0`, equivalent to `>= 10,000 nM`
-- gray zone: `5.0 < pActivity < 6.0`, excluded from classification training
+Exact (`=`) measurements are transformed directly. Censored measurements are labeled only when their bound guarantees the class (`<`/`<=` at <=1,000 nM; `>`/`>=` at >=10,000 nM). Censored bounds are never treated as exact potency values. Compounds with conflicting active/inactive labels after standardization are dropped.
 
-Exact relations (`=`) are transformed directly. Censored relations are used only when the bound guarantees the class:
+### Cleaning audit
 
-- `<` or `<=`: active only when the reported bound is already `<= 1,000 nM`
-- `>` or `>=`: inactive only when the reported bound is already `>= 10,000 nM`
-- all other censored measurements are left unlabeled for classification
-
-A censored value is treated as a bound, not as an exact pActivity measurement.
-
-### Duplicate policy
-
-Rows are ultimately grouped by standardized parent SMILES.
-
-- If a compound has both active and inactive labels after relation-aware labeling, the compound is dropped as conflicting.
-- If labels agree, the compound is retained with that class label.
-- Median pActivity is computed from exact (`=`) measurements only. Censored bounds are not inserted into the median as if they were exact observations.
-- Counts of exact and censored supporting measurements are retained for auditability.
-
-This is slightly stricter than taking the median of every numeric field because a numeric censoring limit is not an observed potency.
-
-## Cleaning counts
-
-The cleaning pipeline lives in `src/data.py` and logs counts after each transformation. Final numbers will be filled from the frozen EGFR snapshot.
-
-| Step | Rows / compounds retained |
+| Step | Count |
 |---|---:|
-| Raw ChEMBL activity rows | TBD |
-| Parseable SMILES | TBD |
-| Parent fragment obtained | TBD |
-| Neutralization succeeded | TBD |
-| Non-empty canonical isomeric SMILES | TBD |
-| Relation-aware labeled rows | TBD |
-| Gray-zone / ambiguous-censor rows removed from classification | TBD |
-| Unique standardized compounds before conflict removal | TBD |
-| Conflicting active/inactive compounds removed | TBD |
-| Final classification compounds | TBD |
-| Unique Bemis-Murcko scaffolds | TBD |
+| Raw ChEMBL activity rows | 20,595 |
+| Parseable SMILES | 20,583 |
+| Parent fragment obtained | 20,583 |
+| Neutralized | 20,583 |
+| Canonical non-empty SMILES | 20,583 |
+| Relation-aware labeled rows | 17,421 |
+| Rows excluded from classification | 3,162 |
+| Unique standardized compounds before conflict removal | 9,778 |
+| Conflicting compounds removed | 302 |
+| Final classification compounds | 9,476 |
+| Active / inactive | 7,869 / 1,607 |
+| Unique Bemis-Murcko scaffolds | 3,621 |
 
-For each standardized molecule the processed table stores Bemis-Murcko scaffold, MW, cLogP, TPSA, HBD, HBA, rotatable bonds, Lipinski flag, Veber flag, QED, and PAINS status. A synthetic-accessibility score is included only when the lightweight RDKit `SA_Score` helper is importable; otherwise the column is left unavailable and the omission is reported.
+![EGFR activity distribution](results/figures/activity_distribution.png)
 
-## Methods
+## Models and evaluation
 
-### Molecular representation
+Both models use Morgan radius-2, 2,048-bit fingerprints plus MW, cLogP, TPSA, HBD, HBA, rotatable bonds, and QED. Morgan bits remain binary. For the Torch MLP, only continuous descriptors are standardized, using training-split statistics only.
 
-The baseline representation is Morgan radius 2, 2048 bits, concatenated with the same small RDKit descriptor set used for screening diagnostics:
-
-- MW
-- cLogP
-- TPSA
-- HBD
-- HBA
-- rotatable bonds
-- QED
-
-The Morgan bits stay binary. For the Torch model, only the seven continuous descriptor columns are standardized, using means and standard deviations fit on that protocol's training split only. Validation and test rows never contribute to scaling statistics. Because this is classification, the target is not normalized.
-
-### Splits
-
-Two evaluation protocols are reported:
-
-1. **Random split** for an easier interpolation view.
-2. **Bemis-Murcko scaffold split** for the primary estimate of generalization to new chemotypes.
-
-Default fractions are 80% train, 10% validation, and 10% test. The scaffold splitter must place every Bemis-Murcko scaffold into exactly one split. The test suite asserts zero scaffold overlap across train, validation, and test for the scaffold protocol.
-
-### Models
-
-**Baseline:** `RandomForestClassifier` on Morgan fingerprints plus RDKit descriptors. Three small candidate settings are compared using validation AUPRC only; the test split is not consulted during model selection. The selected train-fit model is then evaluated once on the held-out test partition.
-
-**Torch model:** a small CPU-runnable PyTorch MLP on the same fingerprint-plus-descriptor vector. Descriptor scaling is training-only, class imbalance is handled with a BCE positive-class weight computed from training labels only, and early stopping uses validation AUPRC. The best validation epoch is restored before the held-out test split is evaluated once. No language model, generative model, or foundation model is used.
-
-The primary screening model is selected under the scaffold protocol. Random-split performance is context, not the headline result.
-
-### Metrics
-
-Classification metrics:
-
-- AUROC
-- AUPRC
-- recall at top 1%
-- recall at top 5%
-- enrichment factor at 1% and 5% when the scaffold test set contains enough positives
-
-The report also records the number of compounds and unique scaffolds in each split and verifies scaffold overlap is zero for the scaffold protocol.
-
-## Model results on random vs scaffold split
-
-Results are placeholders until the frozen dataset and both models have been run end to end.
+Two protocols are reported: an easier stratified random split and the primary label-blind Bemis-Murcko scaffold split. Both use 80/10/10 train/validation/test partitions. Under the scaffold protocol, train, validation, and test contain **2,896 / 362 / 363** unique scaffolds respectively, with **zero scaffold overlap** between partitions.
 
 | Split | Model | AUROC | AUPRC | Recall@1% | Recall@5% | EF@1% | EF@5% |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Random | Random forest | TBD | TBD | TBD | TBD | TBD | TBD |
-| Random | Torch MLP | TBD | TBD | TBD | TBD | TBD | TBD |
-| Scaffold | Random forest | TBD | TBD | TBD | TBD | TBD | TBD |
-| Scaffold | Torch MLP | TBD | TBD | TBD | TBD | TBD | TBD |
+| Random | Random forest | 0.967 | 0.993 | 0.013 | 0.061 | 1.205 | 1.205 |
+| Random | Torch MLP | 0.947 | 0.988 | 0.013 | 0.061 | 1.205 | 1.205 |
+| Scaffold | Random forest | 0.967 | 0.993 | 0.012 | 0.060 | 1.182 | 1.182 |
+| Scaffold | Torch MLP | 0.930 | 0.984 | 0.012 | 0.060 | 1.182 | 1.182 |
 
-Scaffold counts:
+The Random Forest was selected for screening because its **scaffold-validation AUPRC was 0.9852**, compared with **0.9808** for the Torch MLP. Test metrics were not used for model selection. The small neural model did not outperform the fingerprint Random Forest, especially on the scaffold-held-out test set.
 
-| Split protocol | Train compounds / scaffolds | Validation compounds / scaffolds | Test compounds / scaffolds | Scaffold overlap |
-|---|---:|---:|---:|---:|
-| Random | TBD | TBD | TBD | expected, not constrained |
-| Scaffold | TBD | TBD | TBD | **0 required** |
+![Scaffold test precision-recall curve](results/figures/scaffold_test_pr.png)
 
-Primary model used for library ranking: **TBD after scaffold-validation comparison**. The selection rule is scaffold-validation AUPRC only; scaffold-test metrics are reported but are not used to choose the screening model. If validation AUPRC ties exactly, the simpler Random Forest is preferred.
+The high scaffold-test AUPRC should be interpreted in the context of the benchmark's strong class imbalance (83% active) and the chemical series represented in ChEMBL. It is not evidence of prospective clinical or medicinal-chemistry performance.
 
-Required scaffold-test figures:
+## External screen
 
-- activity distribution with 5.0 / 6.0 pActivity cutoffs: `results/figures/activity_distribution.png` — TBD
-- PR or ROC curve: `results/figures/scaffold_test_pr.png` — TBD
+The screening library is a **deterministic, target-agnostic 30,000-molecule small-molecule slice from ChEMBL 37**, frozen on **2026-09-26** under **CC BY-SA 3.0**. Candidate selection uses a SHA-256 ranking of `seed|molecule_chembl_id`; it does not query EGFR activity when constructing the library.
 
-## Screen results: library size and top-20 table
+| Screening stage | Count |
+|---|---:|
+| Raw library molecules | 30,000 |
+| Standardized duplicates removed | 80 |
+| Exact EGFR benchmark overlaps removed | 75 |
+| Final non-overlapping molecules scored | 29,845 |
+| Passed MW/cLogP/QED property filters | 16,945 |
+| Failed property filters | 12,900 |
+| PAINS-flagged molecules in scored library | 1,448 |
 
-Screening library: `TBD` public vendor-like / drug-like slice.
+The selected scaffold Random Forest ranks the library by `active_probability`. This is a model score, **not a calibrated probability that a compound will inhibit EGFR experimentally**.
 
-- Source: TBD
-- License: TBD
-- Download / snapshot date: TBD
-- Raw library size: TBD
-- Valid standardized molecules: TBD
-- Exact standardized SMILES removed because they occur in EGFR train/validation/test: TBD
-- Final molecules scored: TBD
+Triage uses MW 200-600, cLogP -1 to 5, and QED >=0.4. PAINS is reported as a flag rather than used as a silent deletion rule. Nearest-active similarity is Morgan radius-2 Tanimoto against the **6,279 active compounds in scaffold training only**.
 
-The library is scored only after scaffold-split metrics exist. The primary scaffold-trained model ranks molecules by predicted active probability.
+## Are the top scores mostly analogs?
 
-Cheap triage flags:
+Yes, many are close to known training actives:
 
-- MW between 200 and 600
-- cLogP between -1 and 5
-- QED >= 0.4
-- PAINS reported as a separate flag rather than silently deleted
+- **46/50** raw top scores have nearest-training-active Tanimoto >= 0.5.
+- **15/50** raw top scores have Tanimoto >= 0.7.
+- The raw top-50 similarity median is **0.603** (IQR **0.577-0.727**).
+- Across the top 200 scores, similarity median is **0.374** (IQR **0.261-0.593**).
+- The pipeline examined 49 property-filtered candidates, in descending score order, to obtain 20 with Tanimoto strictly <0.5.
 
-Nearest-known-active similarity is Morgan radius 2 Tanimoto against **actives in the scaffold-training partition only**. Validation/test actives are not used as the similarity reference. Exact standardized-SMILES overlap with the full EGFR benchmark (train, validation, and test) is removed before any external-library score is produced.
+This is the central result: high predictive scores are frequently associated with analog retrieval. The low-similarity shortlist is therefore separated from the raw ranking instead of relaxing the novelty threshold after seeing the output.
 
-The external library may be supplied as `.smi`/`.smiles`, CSV, or TSV. Its name, source, license, and snapshot date must be filled in `configs/default.yaml`; `run_screen.py` refuses to score while those fields are still `TBD`. The screening summary records those fields plus a SHA-256 checksum of the actual input file.
+![Nearest-training-active similarity among top 200 scores](results/figures/top200_nearest_active_similarity.png)
 
-Published output lists:
+## Novelty-aware top 20
 
-- `results/lists/top50_raw.csv`
-- `results/lists/top50_filtered.csv`
-- `results/lists/top20_interesting.csv`, restricted to molecules that pass the MW/cLogP/QED window and have nearest-training-active Tanimoto strictly `< 0.5`
+The shortlist spans model scores **0.564-0.786** and nearest-training-active Tanimoto **0.244-0.494**. One of the 20 carries a PAINS alert. The shortlist is not diversity-selected, so multiple candidates may still be related to one another even though each is below the threshold relative to training actives.
 
-For the interesting list, candidates are traversed in descending model-score order. Similarity evaluation stops once 20 qualifying molecules are found; if fewer than 20 qualify, the whole property-filtered library is examined and the smaller result is kept. The threshold is not relaxed after seeing the output.
+| Rank | ChEMBL ID | Standardized SMILES | Score | QED | PAINS | Nearest-active Tanimoto | Risk note |
+|---:|---|---|---:|---:|---|---:|---|
+| 1 | `CHEMBL274442` | `Cc1ccc(C)n1Nc1nncc2ccccc12` | 0.786 | 0.746 | No | 0.476 | Lower-similarity extrapolation risk |
+| 2 | `CHEMBL32464` | `c1ccc(Cc2nc3ccc(Nc4ncnc5ccccc45)cc3[nH]2)cc1` | 0.778 | 0.486 | No | 0.473 | Lower-similarity extrapolation risk |
+| 3 | `CHEMBL26791` | `Oc1c(CN2CCCC2)cc(Nc2ncnc3ccccc23)cc1CN1CCCC1` | 0.706 | 0.599 | Yes | 0.462 | PAINS alert; extrapolation risk |
+| 4 | `CHEMBL417804` | `COc1ccccc1Oc1nccc(-c2c(-c3ccc(F)cc3)ncn2C2CCNCC2)n1` | 0.638 | 0.456 | No | 0.357 | Lower-similarity extrapolation risk |
+| 5 | `CHEMBL273794` | `C#CCN1CCN(C2=Nc3ccc(Br)cc3CC=C2c2ccccc2)CC1` | 0.624 | 0.672 | No | 0.250 | Lower-similarity extrapolation risk |
+| 6 | `CHEMBL280457` | `Oc1nc(-c2ccc(-c3nc(-c4ccc(F)cc4)c(-c4ccncc4)[nH]3)cc2)no1` | 0.616 | 0.454 | No | 0.388 | Lower-similarity extrapolation risk |
+| 7 | `CHEMBL16719` | `C=CCN1CCN(C2=Nc3ccc(Br)cc3CC=C2c2ccccc2)CC1` | 0.610 | 0.654 | No | 0.268 | Lower-similarity extrapolation risk |
+| 8 | `CHEMBL14565` | `CC(=O)Nc1ccccc1Oc1nccc(-c2c(-c3ccc(F)cc3)ncn2C2CCNCC2)n1` | 0.606 | 0.418 | No | 0.341 | Lower-similarity extrapolation risk |
+| 9 | `CHEMBL23254` | `CC(C)[C@H](CO)Nc1nc(Nc2ccc(C(=O)O)c(Cl)c2)c2ncn(C(C)C)c2n1` | 0.606 | 0.422 | No | 0.494 | Lower-similarity extrapolation risk |
+| 10 | `CHEMBL285813` | `c1ccc(-c2cnc(Nc3ccc4cncnc4c3)o2)cc1` | 0.590 | 0.616 | No | 0.306 | Lower-similarity extrapolation risk |
+| 11 | `CHEMBL276592` | `N#Cc1ccc(S(=O)(=O)Nc2cccc(C(c3c(O)oc4c(c3=O)CCCCCC4)C3CC3)c2)nc1` | 0.584 | 0.499 | No | 0.244 | Lower-similarity extrapolation risk |
+| 12 | `CHEMBL14170` | `CN(C)C(=O)c1cccc(Oc2nccc(-c3c(-c4ccc(F)cc4)ncn3C3CCNCC3)n2)c1` | 0.582 | 0.430 | No | 0.324 | Lower-similarity extrapolation risk |
+| 13 | `CHEMBL16672` | `CCCc1ccc2c(c1)CC=C(c1ccccc1)C(N1CCN(CC)CC1)=N2` | 0.580 | 0.755 | No | 0.275 | Lower-similarity extrapolation risk |
+| 14 | `CHEMBL275361` | `CC(C)c1ccc2c(c1)CC=C(c1ccccc1)C(N1CCN(C)CC1)=N2` | 0.578 | 0.772 | No | 0.296 | Lower-similarity extrapolation risk |
+| 15 | `CHEMBL14300` | `COc1cccc(Oc2nccc(-c3c(-c4ccc(F)cc4)ncn3C3CCNCC3)n2)c1` | 0.576 | 0.456 | No | 0.349 | Lower-similarity extrapolation risk |
+| 16 | `CHEMBL21835` | `CN1CCN(c2ccc(-c3cc(NCCC4CCCN4C)c4ccccc4n3)cc2)CC1` | 0.574 | 0.622 | No | 0.345 | Lower-similarity extrapolation risk |
+| 17 | `CHEMBL16588` | `CCc1ccc2c(c1)CC=C(c1ccccc1)C(N1CCN(C(C)C)CC1)=N2` | 0.568 | 0.758 | No | 0.250 | Lower-similarity extrapolation risk |
+| 18 | `CHEMBL276529` | `C[S+]([O-])c1cccc(-c2nc(-c3ccc(F)cc3)c(-c3ccncc3)[nH]2)c1` | 0.568 | 0.525 | No | 0.406 | Lower-similarity extrapolation risk |
+| 19 | `CHEMBL16635` | `CCCN1CCN(C2=Nc3ccc(CC)cc3CC=C2c2ccccc2)CC1` | 0.564 | 0.755 | No | 0.250 | Lower-similarity extrapolation risk |
+| 20 | `CHEMBL273432` | `Oc1ccccc1Oc1nccc(-c2c(-c3ccc(F)cc3)ncn2C2CCNCC2)n1` | 0.564 | 0.482 | No | 0.357 | Lower-similarity extrapolation risk |
 
-Top-20 more-interesting molecules:
+![Top 20 low-similarity hypotheses](results/figures/top_interesting_grid.png)
 
-| Rank | Standardized SMILES | Active probability | QED | PAINS | Nearest training active | Tanimoto | Risk note |
-|---:|---|---:|---:|---|---|---:|---|
-| 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 2 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 3 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 4 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 5 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 6 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 7 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 8 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 9 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 10 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 11 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 12 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 13 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 14 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 15 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 16 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 17 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 18 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 19 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| 20 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+Full machine-readable outputs are in `results/lists/top50_raw.csv`, `top50_filtered.csv`, and `top20_interesting.csv`. `results/tables/screen_summary.json` contains the screening audit and similarity statistics.
 
-The committed top-50 CSVs include at minimum standardized SMILES, model score, QED, PAINS flag, nearest scaffold-training active, Tanimoto similarity, and compact risk notes. `results/tables/screen_summary.json` records preparation counts, selected model family, similarity-reference size, filter counts, and top-score similarity statistics.
+## What did not work / what was filtered out
 
-## How many top scores were near-neighbors of known actives
-
-This is the central diagnostic, not a footnote.
-
-- Top 50 raw with nearest-active Tanimoto `>= 0.5`: **TBD / 50**
-- Top 50 raw with nearest-active Tanimoto `>= 0.7`: **TBD / 50**
-- Top 200 score similarity median: **TBD**
-- Top 200 score similarity IQR: **TBD**
-- Molecules surviving all cheap filters and Tanimoto `< 0.5`: **TBD**
-
-The most important figure is `results/figures/top200_nearest_active_similarity.png`.
-
-If that histogram piles up near 0.7-1.0, the interpretation will be explicit: the screen is dominated by analog retrieval. A small `< 0.5` list will be reported as small rather than rescued by changing the threshold after seeing the results.
-
-A molecule grid for the `< 0.5` shortlist will be saved as `results/figures/top_interesting_grid.png`.
-
-## What failed
-
-Populate this section with concrete negative results rather than deleting them from the history.
-
-- ChEMBL records rejected by relation / unit / structure rules: TBD
-- Activity conflicts after standardization: TBD
-- Candidate model changes that did not improve scaffold-validation AUPRC: TBD
-- Library molecules removed as exact training/evaluation duplicates: TBD
-- Number of high-scoring molecules rejected by simple property filters: TBD
-- Number of nominally high-scoring molecules that were close analogs of training actives: TBD
-- Other failure or implementation note: TBD
+- **3,162** cleaned activity rows were excluded from classification because they fell in the gray zone or had censoring that did not guarantee a class.
+- **302** standardized compounds were removed for conflicting active/inactive labels.
+- Two alternative Random Forest settings did not improve scaffold-validation AUPRC over the selected 500-tree `sqrt`, leaf-size-1 setting; the Torch MLP also scored lower on scaffold validation.
+- **75** external-library molecules were removed as exact standardized-SMILES overlaps with the EGFR benchmark, and **80** standardized duplicates were removed.
+- **32/50** raw top-scoring molecules failed at least one simple MW/cLogP/QED property filter.
+- **46/50** raw top-scoring molecules were within Tanimoto >=0.5 of a scaffold-training active, showing that a high model score often corresponds to analog retrieval rather than a clearly novel chemotype.
+- RDKit emitted a small number of kekulization warnings while reading the external library; invalid representations were handled by the standardization path rather than treated as valid structures.
 
 ## Limitations
 
-- ChEMBL activity measurements combine assays with different protocols, contexts, and experimental uncertainty.
-- IC50, Ki, and Kd are pooled for a deliberately simple portfolio benchmark; they are not physically interchangeable measurements.
-- Binary cutoffs discard information and the 1-10 uM gray zone is intentionally omitted from classification.
-- A scaffold split is harder than a random split but still does not reproduce prospective medicinal-chemistry deployment.
-- Tanimoto novelty is fingerprint-dependent and is not a complete definition of chemotype novelty.
-- PAINS alerts and simple property rules are triage flags, not proof that a molecule will or will not work experimentally.
-- No selectivity, exposure, toxicity, permeability, metabolism, synthesis, crystal structure, or assay evidence is generated here.
-- The external screening library is only a small public slice chosen to keep the workflow laptop-sized.
+- ChEMBL combines assays with different protocols, contexts, and experimental uncertainty.
+- IC50, Ki, and Kd are pooled for a deliberately simple benchmark; they are not physically interchangeable measurements.
+- Binary thresholds discard information, and the 1-10 uM gray zone is intentionally omitted.
+- The dataset is highly imbalanced (7,869 active vs 1,607 inactive), so accuracy is not used as the headline metric.
+- A scaffold split is more demanding than a random split but is not equivalent to prospective medicinal-chemistry deployment.
+- The external library comes from the same broad ChEMBL ecosystem as the benchmark. Exact benchmark overlap is removed, but this is not a temporal or vendor-independent prospective screen.
+- Tanimoto novelty is fingerprint-dependent. The `<0.5` criterion measures distance from training actives, not diversity within the shortlist.
+- PAINS and simple physicochemical rules are triage flags, not experimental evidence.
+- No selectivity, exposure, toxicity, permeability, metabolism, synthesis, docking, crystal-structure evidence, or wet-lab assay evidence is generated here.
 
-These compounds are computationally ranked hypotheses. They have not been synthesized or assayed in this repository.
+> **These compounds are computationally ranked hypotheses. They have not been synthesized or assayed in this repository.**
 
-## How to run
+## Reproduce the workflow
 
 Python 3.11 is the reference environment.
 
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-pytest -q
-```
+python -m pip install -r requirements.txt
+python -m pytest -q
 
-1. Freeze the expected ChEMBL release and download the EGFR activity snapshot:
-
-```bash
 python scripts/prepare_data.py --config configs/default.yaml
-```
-
-2. Train and evaluate the baseline on random and scaffold splits:
-
-```bash
 python scripts/run_baseline.py --config configs/default.yaml
-```
-
-3. Train and evaluate the small PyTorch model:
-
-```bash
 python scripts/run_torch.py --config configs/default.yaml
-```
-
-4. Assemble the baseline-vs-Torch comparison and record the primary model selected from scaffold validation only:
-
-```bash
 python scripts/make_report.py --config configs/default.yaml
-```
-
-5. Build the frozen, target-agnostic 30,000-molecule ChEMBL screening-library slice:
-
-```bash
 python scripts/prepare_screening_library.py --config configs/default.yaml
-```
-
-The generator checks the live ChEMBL release against the configured release, pages through the public molecule API at up to 1,000 records per request, collects a fixed 40,000-record pool of parseable small molecules, then selects 30,000 by a deterministic SHA-256 ranking of `seed|molecule_chembl_id`. It does not query EGFR activity. It writes `data/raw/screening_library.smi` plus `data/raw/screening_library.manifest.json` with source, license, retrieval date, ChEMBL release, selection settings, and checksum. Re-running leaves an existing snapshot untouched.
-
-6. Only after the model table, scaffold-validation selection record, and library manifest exist, score the external library:
-
-```bash
 python scripts/run_screen.py --config configs/default.yaml
 ```
 
-`run_screen.py` reads provenance from the frozen manifest automatically, so no manual `TBD` editing is required. PAINS is hard-coded as `flag_only` for this benchmark; changing it to silent deletion is rejected.
+`prepare_data.py` freezes the ChEMBL activity snapshot and manifest. `prepare_screening_library.py` creates the deterministic 30k target-agnostic library and provenance manifest. `run_screen.py` refuses to proceed without the model-selection record and library provenance.
 
-The screen writes the three ranked CSVs, `results/tables/screen_summary.json`, the top-score similarity histogram, and a molecule-grid figure. If no molecule meets the filtered + `<0.5` criterion, the shortlist CSV is empty and the grid records that outcome rather than relaxing the rule.
+Large raw snapshots, processed datasets, virtual environments, and serialized model artifacts are intentionally ignored by git. The committed result tables, ranked lists, figures, source code, configuration, tests, and manifests are sufficient to audit the reported run; the ignored artifacts can be regenerated from the documented workflow.
 
-Current implementation status:
+## Repository map
 
-- implemented: ChEMBL snapshot/reuse logic, activity labels, chemical standardization, descriptors/PAINS/QED, compound-level conflict handling
-- implemented: Morgan + descriptor feature matrix
-- implemented: reproducible stratified random split and label-blind Bemis-Murcko scaffold split with a zero-overlap assertion
-- implemented: validation-only Random Forest tuning and test evaluation, with auditable split assignments
-- implemented: small deterministic CPU PyTorch fingerprint MLP with training-only descriptor scaling, class weighting, early stopping, and reloadable checkpoints
-- implemented: baseline-vs-Torch held-out-test comparison table plus scaffold-validation-only primary-model selection record
-- implemented: deterministic ChEMBL 37 30k screening-library snapshot generator with release guard, manifest, checksum, and target-agnostic hash selection
-- implemented: external-library SMI/CSV/TSV ingestion, shared standardization, exact full-benchmark overlap removal, validation-selected scaffold-model scoring, property filters, PAINS flagging, and scaffold-training-active Tanimoto triage
-- implemented: top-50 raw/filtered lists, strict `<0.5` top-20 shortlist logic, screen audit JSON, nearest-active histogram, and shortlist molecule grid
-- next: run the frozen 30k library screen, add the activity-distribution and scaffold-test PR figures, and populate README `TBD` values without changing thresholds post hoc
+```text
+configs/default.yaml                  experiment configuration
+src/                                  cleaning, features, splits, models, evaluation, screening
+scripts/prepare_data.py               freeze/clean EGFR ChEMBL benchmark
+scripts/run_baseline.py               RF tuning + random/scaffold evaluation
+scripts/run_torch.py                  fingerprint MLP + early stopping
+scripts/make_report.py                model comparison, selection, benchmark figures
+scripts/prepare_screening_library.py  deterministic 30k ChEMBL library snapshot
+scripts/run_screen.py                 overlap removal, scoring, filters, similarity triage
+results/tables/                       metrics, split audits, selection and screen summary
+results/lists/                        ranked screening outputs
+results/figures/                      benchmark and screening figures
+tests/                                unit/integration tests
+```
 
-`scripts/run_baseline.py` writes `results/tables/baseline_metrics.csv`, `baseline_validation_candidates.csv`, `split_summary.csv`, and per-protocol split assignments. `scripts/run_torch.py` writes `torch_metrics.csv`, `torch_training_history.csv`, `torch_split_summary.csv`, and reloadable `.pt` checkpoints. `scripts/make_report.py` writes `model_comparison.csv` and `primary_model_selection.csv`. `scripts/run_screen.py` consumes the scaffold assignment and validation-selection record, then writes `screen_summary.json`, the three ranked lists, and the two screening figures. Generated model files under `results/models/` are local run artifacts and are not intended as evidence by themselves.
+## Scope
 
-## What this repo does not claim
-
-This repository does **not** present any molecule as an experimentally confirmed EGFR inhibitor, provide experimental validation, claim superiority over an industrial drug-discovery program, or identify a development candidate. It is not a de novo generation project, a multi-target platform, or a production-scale screen. Docking, if added later, will be an optional appendix and will not replace the ligand-based evidence or experimental validation.
+This repository does not present any molecule as an experimentally confirmed EGFR inhibitor, claim a development candidate, or claim superiority over an industrial drug-discovery program. It is a laptop-sized, reproducible demonstration of careful activity labeling, scaffold-aware evaluation, model comparison, external-library ranking, and explicit analog-retrieval diagnostics.
