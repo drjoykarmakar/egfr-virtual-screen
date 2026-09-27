@@ -1,5 +1,7 @@
 # EGFR Virtual Screen
 
+[![CI](https://github.com/drjoykarmakar/egfr-virtual-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/drjoykarmakar/egfr-virtual-screen/actions/workflows/ci.yml)
+
 A reproducible ligand-based EGFR virtual-screening benchmark built with RDKit, scikit-learn, PyTorch, and ChEMBL 37.
 
 ## Reviewer snapshot
