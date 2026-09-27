@@ -1,24 +1,32 @@
-"""Assemble model result tables from completed baseline and Torch runs.
+"""Assemble model result tables and the two benchmark figures.
 
-This stage intentionally does not fabricate missing results. It requires both
-metric files, writes the four-row held-out-test comparison, and records the
-primary screening-model choice using scaffold *validation* AUPRC only. Test
-metrics are never used to choose which model will rank the external library.
+This stage requires completed baseline and Torch runs. It writes the held-out-test
+comparison table, records the primary screening-model choice using scaffold
+validation AUPRC only, and generates:
+
+- results/figures/activity_distribution.png
+- results/figures/scaffold_test_pr.png
+
+Test metrics are never used to choose which model will rank the external library.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import pickle
 import sys
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_recall_curve, average_precision_score
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.features import feature_matrix_from_frame
 from src.train import load_config, project_root_from_config_path, resolve_path
 
 
@@ -78,12 +86,7 @@ def select_primary_scaffold_model(
     baseline: pd.DataFrame,
     torch_metrics: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Select the future screening model by scaffold-validation metric only.
-
-    A deterministic simplicity tie-break favors the Random Forest if validation
-    scores are numerically equal. The returned table is an audit record; test
-    metrics are deliberately absent.
-    """
+    """Select the future screening model by scaffold-validation metric only."""
 
     required = {"split_protocol", "model", "validation_selection_metric", "selection_metric"}
     candidates = pd.concat([baseline, torch_metrics], ignore_index=True, sort=False)
@@ -119,17 +122,96 @@ def select_primary_scaffold_model(
     ]
 
 
+def plot_activity_distribution(frame: pd.DataFrame, output_path: Path) -> None:
+    """Plot exact pActivity measurements with the inactive/active cutoffs."""
+
+    values = pd.to_numeric(frame["pactivity_median_exact"], errors="coerce").dropna().to_numpy()
+    if values.size == 0:
+        raise ValueError("No exact pActivity values are available for the activity-distribution figure.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    ax.hist(values, bins=45, edgecolor="black", linewidth=0.4)
+    ax.axvline(5.0, linestyle="--", linewidth=1.4, label="inactive cutoff = 5.0")
+    ax.axvline(6.0, linestyle="--", linewidth=1.4, label="active cutoff = 6.0")
+    ax.set_xlabel("Median exact pActivity per standardized compound")
+    ax.set_ylabel("Compounds")
+    ax.set_title("EGFR activity distribution and classification cutoffs")
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
+def plot_scaffold_test_pr(
+    frame: pd.DataFrame,
+    assignments: pd.DataFrame,
+    model_path: Path,
+    config: dict,
+    output_path: Path,
+) -> None:
+    """Plot the scaffold-test precision-recall curve for the selected RF baseline."""
+
+    if len(frame) != len(assignments):
+        raise ValueError("Processed dataset and scaffold split assignment row counts differ.")
+    if not frame["standardized_smiles"].astype(str).equals(
+        assignments["standardized_smiles"].astype(str)
+    ):
+        raise ValueError("Processed dataset and scaffold split assignments are not row-aligned.")
+
+    feature_cfg = config["features"]["morgan"]
+    X = feature_matrix_from_frame(
+        frame,
+        radius=int(feature_cfg["radius"]),
+        n_bits=int(feature_cfg["n_bits"]),
+        use_chirality=bool(feature_cfg.get("use_chirality", True)),
+    )
+    test_mask = assignments["split"].astype(str).eq("test").to_numpy()
+    y_test = frame.loc[test_mask, "activity_label"].astype(int).to_numpy()
+    if len(np.unique(y_test)) < 2:
+        raise ValueError("Scaffold test partition must contain both classes for a PR curve.")
+
+    with model_path.open("rb") as handle:
+        model = pickle.load(handle)
+    scores = model.predict_proba(X[test_mask])[:, 1]
+    precision, recall, _ = precision_recall_curve(y_test, scores)
+    auprc = average_precision_score(y_test, scores)
+    prevalence = float(np.mean(y_test))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(6.4, 5.0))
+    ax.plot(recall, precision, linewidth=1.8, label=f"Random Forest (AUPRC={auprc:.3f})")
+    ax.axhline(prevalence, linestyle="--", linewidth=1.2, label=f"prevalence={prevalence:.3f}")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.02)
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title("Scaffold-test precision-recall curve")
+    ax.legend(frameon=False, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     root = project_root_from_config_path(args.config)
     results_dir = resolve_path(root, config["paths"]["results_tables"])
+    figures_dir = resolve_path(root, config["paths"]["results_figures"])
+    models_dir = resolve_path(root, config["paths"]["results_models"])
+
     baseline_path = results_dir / "baseline_metrics.csv"
     torch_path = results_dir / "torch_metrics.csv"
-    missing = [str(path) for path in (baseline_path, torch_path) if not path.exists()]
+    processed_path = resolve_path(root, config["data"]["chembl"]["processed_table"])
+    assignment_path = results_dir / "scaffold_split_assignments.csv"
+    scaffold_rf_path = models_dir / "scaffold_random_forest.pkl"
+
+    required_paths = [baseline_path, torch_path, processed_path, assignment_path, scaffold_rf_path]
+    missing = [str(path) for path in required_paths if not path.exists()]
     if missing:
         raise FileNotFoundError(
-            "Model metrics are incomplete. Run baseline and Torch stages first. Missing: "
+            "Report inputs are incomplete. Run data preparation and model stages first. Missing: "
             + ", ".join(missing)
         )
 
@@ -142,8 +224,18 @@ def main() -> None:
     selection_path = results_dir / "primary_model_selection.csv"
     comparison.to_csv(comparison_path, index=False)
     selection.to_csv(selection_path, index=False)
+
+    frame = pd.read_csv(processed_path)
+    assignments = pd.read_csv(assignment_path)
+    activity_figure = figures_dir / "activity_distribution.png"
+    pr_figure = figures_dir / "scaffold_test_pr.png"
+    plot_activity_distribution(frame, activity_figure)
+    plot_scaffold_test_pr(frame, assignments, scaffold_rf_path, config, pr_figure)
+
     print(f"Wrote {comparison_path}")
     print(f"Wrote {selection_path}")
+    print(f"Wrote {activity_figure}")
+    print(f"Wrote {pr_figure}")
 
 
 if __name__ == "__main__":
