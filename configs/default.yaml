@@ -1,0 +1,122 @@
+project:
+  name: egfr-virtual-screen
+  seed: 2026
+  python: "3.11"
+
+data:
+  chembl:
+    target_chembl_id: CHEMBL203
+    target_name: EGFR
+    organism: Homo sapiens
+    expected_release: ChEMBL_37
+    standard_types: [IC50, Ki, Kd]
+    standard_units: nM
+    allowed_relations: ["=", "<", "<=", ">", ">="]
+    active_pactivity: 6.0
+    inactive_pactivity: 5.0
+    raw_snapshot: data/raw/egfr_chembl37_activities.tsv
+    manifest: data/raw/egfr_chembl37_activities.manifest.json
+    processed_table: data/processed/egfr_activity_classification.csv
+    conflicts_table: data/processed/egfr_activity_conflicts.csv
+    cleaning_report: data/processed/egfr_cleaning_report.json
+    refuse_release_mismatch: true
+  screening_library:
+    input_path: data/raw/screening_library.smi
+    manifest: data/raw/screening_library.manifest.json
+    smiles_column: null
+    id_column: null
+    require_provenance: true
+    target_size_min: 20000
+    target_size_max: 50000
+    generator:
+      expected_release: ChEMBL_37
+      target_size: 30000
+      candidate_pool_size: 40000
+      page_size: 1000
+      seed: 2026
+      refuse_release_mismatch: true
+      timeout_seconds: 60
+      max_retries: 5
+
+cleaning:
+  largest_parent_fragment: true
+  neutralize: true
+  canonical_isomeric_smiles: true
+  compute_pains: true
+  compute_sa_if_available: true
+
+features:
+  morgan:
+    radius: 2
+    n_bits: 2048
+    use_chirality: true
+  descriptors:
+    - mw
+    - clogp
+    - tpsa
+    - hbd
+    - hba
+    - rotatable_bonds
+    - qed
+
+splits:
+  train_fraction: 0.80
+  validation_fraction: 0.10
+  test_fraction: 0.10
+  random_seed: 2026
+  primary_protocol: scaffold
+
+baseline:
+  model: RandomForestClassifier
+  class_weight: balanced
+  n_jobs: -1
+  random_state: 2026
+  selection_metric: auprc
+  validation_candidates:
+    - n_estimators: 300
+      max_features: sqrt
+      min_samples_leaf: 1
+    - n_estimators: 500
+      max_features: sqrt
+      min_samples_leaf: 1
+    - n_estimators: 500
+      max_features: 0.25
+      min_samples_leaf: 2
+
+torch:
+  model: fingerprint_mlp
+  hidden_dims: [512, 128]
+  dropout: 0.20
+  batch_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 100
+  early_stopping_patience: 12
+  selection_metric: auprc
+  device: cpu
+  seed: 2026
+
+screen:
+  score_column: active_probability
+  filters:
+    mw_min: 200.0
+    mw_max: 600.0
+    clogp_min: -1.0
+    clogp_max: 5.0
+    qed_min: 0.40
+    pains_action: flag_only
+  nearest_active:
+    fingerprint_radius: 2
+    fingerprint_bits: 2048
+    interesting_max_tanimoto: 0.50
+  output_sizes:
+    raw_top: 50
+    filtered_top: 50
+    interesting_top: 20
+    similarity_histogram_top: 200
+
+paths:
+  results_tables: results/tables
+  results_figures: results/figures
+  results_lists: results/lists
+  results_models: results/models

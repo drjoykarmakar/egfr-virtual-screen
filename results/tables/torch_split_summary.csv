@@ -1,0 +1,7 @@
+split_protocol,split,n_compounds,n_scaffolds,n_active,n_inactive
+random,train,7580,3098,6295,1285
+random,validation,948,650,787,161
+random,test,948,661,787,161
+scaffold,train,7580,2896,6279,1301
+scaffold,validation,948,362,788,160
+scaffold,test,948,363,802,146

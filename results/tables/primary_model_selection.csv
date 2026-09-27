@@ -1,0 +1,3 @@
+model,selection_metric,validation_selection_metric,selected_for_screen
+RandomForestClassifier,auprc,0.985191647388445,True
+TorchFingerprintMLP,auprc,0.9807968201160436,False

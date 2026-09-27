@@ -1,0 +1,3 @@
+split_protocol,model,n_train,n_validation,n_test,auroc,auprc,recall_at_1pct,recall_at_5pct,ef_at_1pct,ef_at_5pct,validation_selection_metric,selection_metric,best_params
+random,RandomForestClassifier,7580,948,948,0.9673104090539592,0.9928806534065,0.012706480304955527,0.060991105463786534,1.204574332909784,1.204574332909784,0.9943000043178791,auprc,"{""max_features"": ""sqrt"", ""min_samples_leaf"": 1, ""n_estimators"": 300}"
+scaffold,RandomForestClassifier,7580,948,948,0.9665092405971373,0.9925382895350001,0.012468827930174564,0.059850374064837904,1.1820448877805487,1.1820448877805487,0.985191647388445,auprc,"{""max_features"": ""sqrt"", ""min_samples_leaf"": 1, ""n_estimators"": 500}"

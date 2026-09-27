@@ -1,0 +1,53 @@
+{
+  "activity_row_count": 20595,
+  "assay_count": 5251,
+  "chembl_api_status": "UP",
+  "columns": [
+    "activity_id",
+    "assay_chembl_id",
+    "canonical_smiles",
+    "document_chembl_id",
+    "molecule_chembl_id",
+    "parent_molecule_chembl_id",
+    "pchembl_value",
+    "relation",
+    "standard_relation",
+    "standard_type",
+    "standard_units",
+    "standard_value",
+    "target_chembl_id",
+    "target_organism",
+    "target_pref_name",
+    "type",
+    "units",
+    "value",
+    "source_assay_organism",
+    "source_assay_tax_id",
+    "source_assay_type",
+    "source_assay_confidence_score"
+  ],
+  "observed_chembl_release": "ChEMBL_37",
+  "observed_chembl_release_date": "2026-05-01",
+  "query": {
+    "allowed_relations": [
+      "=",
+      "<",
+      "<=",
+      ">",
+      ">="
+    ],
+    "assay_organism": "Homo sapiens",
+    "expected_release": "ChEMBL_37",
+    "refuse_release_mismatch": true,
+    "standard_types": [
+      "IC50",
+      "Ki",
+      "Kd"
+    ],
+    "standard_units": "nM",
+    "target_chembl_id": "CHEMBL203"
+  },
+  "retrieved_at_utc": "2026-09-27T00:09:22.361058+00:00",
+  "snapshot_path": "/Users/joykarmakar/Documents/GitHub/egfr-virtual-screen/data/raw/egfr_chembl37_activities.tsv",
+  "snapshot_sha256": "f4b232445d4b269f262ccff3393c14610704fedfaf72f654d3e46aee4c07e7d3"
+}

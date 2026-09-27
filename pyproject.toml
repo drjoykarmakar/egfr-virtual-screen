@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egfr-virtual-screen"
+version = "0.1.0"
+description = "A skeptical, reproducible ligand-based EGFR virtual-screening benchmark."
+requires-python = ">=3.11,<3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"

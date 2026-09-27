@@ -1,0 +1,11 @@
+# Reference environment: Python 3.11
+chembl-webresource-client==0.10.9
+matplotlib==3.11.2
+numpy==2.4.6
+pandas==3.0.6
+PyYAML==6.0.3
+rdkit==2026.3.6
+requests==2.34.2
+scikit-learn==1.9.1
+torch==2.14.0
+pytest==9.1.1

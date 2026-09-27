@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Notebooks / editors
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# Logs and model artifacts
+*.log
+*.pt
+*.pth
+*.pkl
+*.joblib
+
+# Large or mutable raw data: keep only documentation/manifests in git.
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/*.json
+!data/raw/README.md
+
+# Processed datasets can be regenerated; small committed result tables live under results/.
+data/processed/*
+!data/processed/.gitkeep
+
+# Temporary downloads
+*.part
+*.tmp

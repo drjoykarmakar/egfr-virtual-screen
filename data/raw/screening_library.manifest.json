@@ -1,0 +1,28 @@
+{
+  "candidate_pool_count": 40000,
+  "chembl_api_status": "UP",
+  "license": "Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)",
+  "name": "ChEMBL_37 deterministic 30,000-molecule small-molecule slice",
+  "observed_chembl_release": "ChEMBL_37",
+  "observed_chembl_release_date": "2026-05-01",
+  "pages_requested": 41,
+  "raw_records_scanned": 41000,
+  "retrieved_at_utc": "2026-09-26T23:15:45.164712+00:00",
+  "selected_count": 30000,
+  "selection": {
+    "candidate_pool_size": 40000,
+    "description": "Target-agnostic ChEMBL molecule records; parseable small-molecule canonical SMILES collected into a fixed candidate pool, then ranked by SHA256(seed|molecule_chembl_id). No EGFR activity information is used.",
+    "expected_release": "ChEMBL_37",
+    "max_retries": 5,
+    "page_size": 1000,
+    "refuse_release_mismatch": true,
+    "seed": 2026,
+    "target_size": 30000,
+    "timeout_seconds": 60.0
+  },
+  "snapshot_date": "2026-09-26",
+  "snapshot_path": "/Users/joykarmakar/Documents/GitHub/egfr-virtual-screen/data/raw/screening_library.smi",
+  "snapshot_sha256": "074c73566e9e0d1d4626c147a76063017ea7670a5261db897ad4a102b15e646c",
+  "source": "https://www.ebi.ac.uk/chembl/api/data/molecule.json",
+  "source_homepage": "https://www.ebi.ac.uk/chembl/"
+}

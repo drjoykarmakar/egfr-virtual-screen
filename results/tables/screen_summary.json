@@ -1,0 +1,49 @@
+{
+  "library": {
+    "canonical_nonempty": 30000,
+    "exact_benchmark_overlaps_removed": 75,
+    "final_rows": 29845,
+    "input_path": "data/raw/screening_library.smi",
+    "input_sha256": "074c73566e9e0d1d4626c147a76063017ea7670a5261db897ad4a102b15e646c",
+    "license": "Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)",
+    "manifest_path": "data/raw/screening_library.manifest.json",
+    "manifest_sha256": "3f518ce804a6e64b87aa4c59686259bd18a3d9f20652a9c50e277d46f28ab7ba",
+    "name": "ChEMBL_37 deterministic 30,000-molecule small-molecule slice",
+    "neutralized": 30000,
+    "parent_fragment": 30000,
+    "parsed_smiles": 30000,
+    "raw_rows": 30000,
+    "snapshot_date": "2026-09-26",
+    "source": "https://www.ebi.ac.uk/chembl/api/data/molecule.json",
+    "standardized_duplicates_removed": 80,
+    "standardized_rows": 30000
+  },
+  "model": {
+    "score_column": "active_probability",
+    "selected_family": "RandomForestClassifier",
+    "selection_basis": "scaffold validation only"
+  },
+  "nearest_active_reference": {
+    "morgan_bits": 2048,
+    "morgan_radius": 2,
+    "n_training_actives": 6279,
+    "partition": "scaffold train"
+  },
+  "triage": {
+    "interesting_candidates_examined": 49,
+    "interesting_count": 20,
+    "interesting_max_tanimoto_exclusive": 0.5,
+    "pains_flag_count": 1448,
+    "property_filter_fail_count": 12900,
+    "property_filter_pass_count": 16945,
+    "top_filtered_count": 50,
+    "top_raw_count": 50,
+    "top_raw_tanimoto_ge_0_5": 46,
+    "top_raw_tanimoto_ge_0_7": 15,
+    "top_similarity_iqr": 0.33241952830367466,
+    "top_similarity_median": 0.37428902464714553,
+    "top_similarity_n": 200,
+    "top_similarity_q1": 0.2610633776792313,
+    "top_similarity_q3": 0.593482905982906
+  }
+}
